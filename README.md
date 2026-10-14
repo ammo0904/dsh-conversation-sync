@@ -59,4 +59,4 @@ dsh plugin --profile web add "link:$env:USERPROFILE/DSH-Plugins/dsh-conversation
 
 ## 版本與發布
 
-安裝包使用版本檔名 `dsh-conversation-sync-V3-0.3.0.zip`；變更紀錄見 CHANGELOG.md。程式可整理為 GitHub 儲存庫，但目前尚未發布；不要在 GitHub 放配對憑證、對話紀錄或 VPS 密碼。
+安裝包使用版本檔名 `dsh-conversation-sync-V3-0.3.0.zip`；變更紀錄見 CHANGELOG.md。本插件已發布於 https://github.com/ammo0904/dsh-conversation-sync；目前版本為 `v0.3.0`。不要在 GitHub 放配對憑證、對話紀錄或 VPS 密碼。
