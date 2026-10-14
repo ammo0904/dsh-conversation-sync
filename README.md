@@ -1,4 +1,4 @@
-# DSH 對話雲端同步 V3（0.3.0）
+# DSH 對話雲端同步 V4（0.4.0）
 
 此套件為 `dsh-conversation-sync`，使用 VPS HTTPS API 與裝置配對。它不是舊的 `dsh-session-sync` Git SSH 插件，請勿同時啟用兩種同步流程。
 
@@ -7,7 +7,7 @@
 使用指定版本安裝，可確保公司與家裡使用同一版本：
 
 ```powershell
-dsh plugin --profile web add "github:ammo0904/dsh-conversation-sync#v0.3.0"
+dsh plugin --profile web add "github:ammo0904/dsh-conversation-sync#v0.4.0"
 ```
 
 日後更新時將標籤換成新版本；安裝後重新啟動 DSH，瀏覽器按 Ctrl+F5。既有本機設定與配對資料保留。套件需要 DSH 0.2.0-rc.2 相容介面及 Node.js 24；VPS HTTPS 同步服務必須另外部署，本儲存庫只包含用戶端插件。
@@ -24,7 +24,7 @@ dsh plugin --profile web add "link:$env:USERPROFILE/DSH-Plugins/dsh-conversation
 ```
 
 4. 重新啟動 DSH，瀏覽器按 Ctrl+F5。
-5. 進入「插件 → dsh-conversation-sync」，確認標題顯示 v0.3.0。
+5. 進入「插件 → dsh-conversation-sync」，確認標題顯示 v0.4.0。
 
 ## 設定會話來源前綴
 
@@ -52,11 +52,12 @@ dsh plugin --profile web add "link:$env:USERPROFILE/DSH-Plugins/dsh-conversation
 
 ## 明天確認清單
 
-- GUI 顯示 v0.3.0，前綴欄位可以儲存並在重新啟動後保留。
+- GUI 顯示 v0.4.0，前綴欄位可以儲存並在重新啟動後保留。
 - 新會話的自動標題帶有 `公司_`，沒有重複前綴。
 - 下載的家裡會話保留 `家裡_`，可開啟歷史並續聊。
 - 檢查最近同步時間及錯誤；已開啟、被鎖定的對話可能暫緩下載，關閉該對話後再同步。
 
 ## 版本與發布
 
-安裝包使用版本檔名 `dsh-conversation-sync-V3-0.3.0.zip`；變更紀錄見 CHANGELOG.md。本插件已發布於 https://github.com/ammo0904/dsh-conversation-sync；目前版本為 `v0.3.0`。不要在 GitHub 放配對憑證、對話紀錄或 VPS 密碼。
+安裝包使用版本檔名 `dsh-conversation-sync-V4-0.4.0.zip`；變更紀錄見 CHANGELOG.md。本插件已發布於 https://github.com/ammo0904/dsh-conversation-sync；目前版本為 `v0.4.0`。不要在 GitHub 放配對憑證、對話紀錄或 VPS 密碼。
+

@@ -37,10 +37,10 @@ export function apply(ctx) {
   let lastPoll=Date.now()
   ctx.effect(()=>ctx.connection.fetch.register({path:'/api/conversation-sync',methods:['GET','POST'],requestBody:'buffered',fetch:async request=>{
     try{
-      if(request.method==='GET'){const {config}=current();return Response.json({ok:true,value:config,sync:await getClient().status(),projects:await projects(),backups:await getClient().backups()})}
+      if(request.method==='GET'){const {config}=current();return Response.json({ok:true,version:'0.4.0',value:config,sync:await getClient().status(),projects:await projects(),backups:await getClient().backups()})}
       const body=await request.json()
       return await serialize(async()=>{
-        if(body.action==='save'){const value=validateSettings(body.value);const {item}=current();await ctx.configEditor.edit(item.entry,existing=>({...existing,...value}));return Response.json({ok:true,message:'設定已儲存。'})}
+        if(body.action==='save'){const value=validateSettings(body.value);const {item}=current();await ctx.configEditor.edit(item.entry,existing=>({...existing,...value}));if((current().config.titlePrefix||'')!==value.titlePrefix) throw new Error('前綴尚未套用，請重新啟動 DSH 後再儲存');return Response.json({ok:true,message:'設定已儲存。'})}
         const c=getClient()
         if(body.action==='register'){await c.register(String(body.enrollmentSecret||''));return Response.json({ok:true,message:'裝置配對完成。'})}
         if(body.action==='sync'){const result=await c.sync({upload:true,download:true});return Response.json({ok:true,result,message:`上傳 ${result.uploaded}、下載 ${result.downloaded}、衝突 ${result.conflicts}、暫緩 ${result.deferred}。`})}

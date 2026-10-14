@@ -3,16 +3,16 @@ window.__ModuleLoader__.load({id:'dsh-conversation-sync',factory:require=>{
  const box={padding:10,border:'1px solid #666',borderRadius:6,background:'transparent',color:'inherit',font:'inherit'}
  function Panel(){
   const [data,setData]=React.useState(null),[value,setValue]=React.useState(null),[secret,setSecret]=React.useState(''),[busy,setBusy]=React.useState(false),[dirty,setDirty]=React.useState(false),[message,setMessage]=React.useState('')
-  const load=async()=>{const r=await fetch('/api/conversation-sync',{cache:'no-store'});if(!r.headers.get('content-type')?.includes('application/json'))throw Error(r.status===404?'同步後端尚未啟動，請檢查元件狀態後重新啟動 DSH。':`同步 API 回傳 HTTP ${r.status}，請重新登入或檢查服務。`);const d=await r.json();if(!d.ok)throw Error(d.message);setData(d);setValue(d.value)}
+  const load=async()=>{const r=await fetch('/api/conversation-sync',{cache:'no-store'});if(!r.headers.get('content-type')?.includes('application/json'))throw Error(r.status===404?'同步後端尚未啟動，請檢查元件狀態後重新啟動 DSH。':`同步 API 回傳 HTTP ${r.status}，請重新登入或檢查服務。`);const d=await r.json();if(!d.ok)throw Error(d.message);if(d.version!=='0.4.0')throw Error('新版後端尚未載入，請重新啟動 DSH 後再設定前綴。');setData(d);setValue(d.value)}
   React.useEffect(()=>{load().catch(e=>setMessage(e.message))},[])
   const change=(k,v)=>{setValue(x=>({...x,[k]:v}));setDirty(true)}
-  const run=async action=>{setBusy(true);try{const r=await fetch('/api/conversation-sync',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,value,enrollmentSecret:action==='register'?secret:undefined})}),d=await r.json();if(!d.ok)throw Error(d.message);setMessage(d.message);if(action==='register')setSecret('');if(action==='save')setDirty(false);await load()}catch(e){setMessage(e.message)}finally{setBusy(false)}}
+  const run=async action=>{setBusy(true);try{const r=await fetch('/api/conversation-sync',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,value,enrollmentSecret:action==='register'?secret:undefined})}),d=await r.json();if(!d.ok)throw Error(d.message);setMessage(d.message);if(action==='register')setSecret('');await load();if(action==='save'){const check=await(await fetch('/api/conversation-sync',{cache:'no-store'})).json();if(!check.ok||(check.value.titlePrefix||'')!==(value.titlePrefix||''))throw Error('前綴未成功保存，請重新啟動 DSH 後再試。');setDirty(false);}}catch(e){setMessage(e.message)}finally{setBusy(false)}}
   const field=(key,label,type='text')=>h('label',{style:{display:'grid',gap:6}},label,h('input',{style:box,type,disabled:busy,value:value[key]??'',onChange:e=>change(key,type==='number'?Number(e.target.value):e.target.value)}))
   const toggle=(key,label)=>h('label',null,h('input',{type:'checkbox',disabled:busy,checked:!!value[key],onChange:e=>change(key,e.target.checked)}),' ',label)
   const button=(action,label,disabled=false)=>h('button',{style:box,disabled:busy||disabled,onClick:()=>run(action)},label)
   if(!value)return h('p',null,message||'載入對話同步設定…')
   const sync=data.sync||{}
-  return h('section',{style:{padding:20,maxWidth:850,display:'grid',gap:16}},h('h2',null,'DSH 對話雲端同步 v0.3.0'),
+  return h('section',{style:{padding:20,maxWidth:850,display:'grid',gap:16}},h('h2',null,'DSH 對話雲端同步 v0.4.0'),
    h('div',{style:{display:'grid',gap:12,gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))'}},field('apiBaseUrl','VPS HTTPS 位址'),field('deviceName','這台電腦的名稱'),
      h('div',{style:{display:'grid',gap:6}},field('titlePrefix','新會話標題前綴'),h('small',null,'例如：家裡_ 或 公司_。儲存後的新會話自動命名會加上此前綴；空白表示關閉。既有與下載的對話不會改名。'),h('small',null,'預覽：',(value.titlePrefix||''),'這是一段會話')),
     h('label',{style:{display:'grid',gap:6}},'新下載對話的本機專案',h('select',{style:box,value:value.restoreProjectKey||'',disabled:busy,onChange:e=>change('restoreProjectKey',e.target.value)},h('option',{value:''},'請選擇還原專案'),...(data.projects||[]).map(p=>h('option',{key:p.key,value:p.key},p.label)))),field('pollIntervalMinutes','下載檢查間隔（分鐘，0 表示停用）','number')),
