@@ -1,0 +1,12 @@
+- insert:
+    - id: conversation-sync
+      name: dsh-conversation-sync
+      config:
+        enabled: true
+        apiBaseUrl: ''
+        deviceName: ''
+        titlePrefix: ''
+        restoreProjectKey: ''
+        autoUpload: false
+        autoDownload: false
+        pollIntervalMinutes: 0

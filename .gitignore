@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.*
+*.zip
+*.log
+.credentials*
+sessions/
+backups/
+_tools/

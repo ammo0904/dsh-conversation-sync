@@ -1,0 +1,16 @@
+{
+  "name": "dsh-conversation-sync",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "exports": { ".": "./index.mjs", "./client": "./client.js", "./zstd-frames": "./zstd-frames.mjs", "./cordis.patch.yml": "./cordis.patch.yml", "./package.json": "./package.json" },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "inject": ["@deepseek-ai/dsh-client-ui-plugin-manager"], "platform": "web" }
+  },
+  "scripts": { "test": "node --test" },
+  "dependencies": { "koffi": "^3.1.1" },
+  "peerDependencies": { "@deepseek-ai/cordis": "~4.0.4" }
+}
