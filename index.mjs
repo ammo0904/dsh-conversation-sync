@@ -32,7 +32,9 @@ export function apply(ctx) {
   let client, signature, tail=Promise.resolve(),disposed=false,timer
   const current=()=>{ const item=ctx.configEditor.configuration().find(x=>x.entry.options.id==='conversation-sync'); if(!item)throw new Error('找不到對話同步設定');return {item,config:{...item.inherited,...item.override}} }
   ctx.effect(()=>attachTitlePrefix(ctx,()=>current().config.enabled===false?'':current().config.titlePrefix||''))
-  const getClient=()=>{ const {config}=current();const next=JSON.stringify([config.apiBaseUrl,config.deviceName,config.restoreProjectKey,config.ignoredSessionIds]);if(!client||signature!==next){signature=next;client=new SyncClient({home,apiBaseUrl:config.apiBaseUrl,deviceName:config.deviceName,restoreProjectKey:config.restoreProjectKey,withSessionLease})}return client }
+  // SyncClient 需要的設定欄位集中在這裡，避免新增欄位時漏傳（0.5.1 曾漏傳 ignoredSessionIds）。
+  const CLIENT_KEYS=['apiBaseUrl','deviceName','restoreProjectKey','ignoredSessionIds']
+  const getClient=()=>{ const {config}=current();const next=JSON.stringify(CLIENT_KEYS.map(key=>config[key]));if(!client||signature!==next){signature=next;const options={home,withSessionLease};for(const key of CLIENT_KEYS) options[key]=config[key];client=new SyncClient(options)}return client }
   const serialize=operation=>{const next=tail.then(operation);tail=next.catch(()=>{});return next}
   const projects=async()=>{try{return (await fs.readdir(path.join(home,'sessions'),{withFileTypes:true})).filter(x=>x.isDirectory()&&!x.name.startsWith('.')).map(x=>({key:x.name,label:x.name}))}catch(e){if(e.code==='ENOENT')return [];throw e}}
   const automatic=direction=>serialize(async()=>{if(disposed)return;const {config}=current();if(config.enabled===false||!config.apiBaseUrl)return;const c=getClient();if(!(await c.status()).tokenConfigured)return;await c.sync(direction)}).catch(e=>ctx.logger?.warn?.(`對話同步：${e.message}`))
@@ -41,13 +43,14 @@ export function apply(ctx) {
   let lastPoll=Date.now()
   ctx.effect(()=>ctx.connection.fetch.register({path:'/api/conversation-sync',methods:['GET','POST'],requestBody:'buffered',fetch:async request=>{
     try{
-      if(request.method==='GET'){const {config}=current();return Response.json({ok:true,version:'0.5.1',value:config,sync:await getClient().status(),projects:await projects(),backups:await getClient().backups()})}
+      if(request.method==='GET'){const {config}=current();return Response.json({ok:true,version:'0.5.2',value:config,sync:await getClient().status(),projects:await projects(),backups:await getClient().backups()})}
       const body=await request.json()
       return await serialize(async()=>{
         if(body.action==='save'){const value=validateSettings(body.value);const {item}=current();await ctx.configEditor.edit(item.entry,existing=>({...existing,...value}));if((current().config.titlePrefix||'')!==value.titlePrefix) throw new Error('前綴尚未套用，請重新啟動 DSH 後再儲存');return Response.json({ok:true,message:'設定已儲存。'})}
         const c=getClient()
         if(body.action==='register'){await c.register(String(body.enrollmentSecret||''));return Response.json({ok:true,message:'裝置配對完成。'})}
         if(body.action==='sync'){const result=await c.sync({upload:true,download:true});return Response.json({ok:true,result,message:`上傳 ${result.uploaded}、下載 ${result.downloaded}、衝突 ${result.conflicts}、暫緩 ${result.deferred}、修復 ${result.repaired}、忽略 ${result.ignored}。`})}
+        if(body.action==='status'){return Response.json({ok:true,version:'0.5.2',ignored:[...getClient().ignored]})}
         if(body.action==='removeIgnored'){const result=await c.removeIgnored();return Response.json({ok:true,result,message:`已移除 ${result.removed} 個忽略的對話（備份 ${result.backups.length} 份）${result.errors.length?`、錯誤 ${result.errors.length}`:''}。`})}
         if(body.action==='repair'){const result=await c.repair({dryRun:Boolean(body.dryRun)});const extra=result.unresolved.length?`、待處理 ${result.unresolved.length}`:'';return Response.json({ok:true,result,message:`${body.dryRun?'檢查':'修復'} ${result.repaired} 個對話（${result.repairedFiles} 個記錄檔）${extra}${result.errors.length?`、錯誤 ${result.errors.length}`:''}。`})}
         if(body.action==='test'){const response=await fetch(`${current().config.apiBaseUrl}/health`,{signal:AbortSignal.timeout(10000)});if(!response.ok)throw new Error('VPS 健康檢查失敗');const remote=await response.json();if(remote.service!=='dsh-conversation-sync-server')throw new Error('此位址不是對話同步服務');return Response.json({ok:true,message:'VPS 連線正常。'})}
