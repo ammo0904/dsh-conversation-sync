@@ -1,4 +1,4 @@
-# DSH 對話雲端同步 V4（0.4.0）
+# DSH 對話雲端同步 V5（0.5.0）
 
 此套件為 `dsh-conversation-sync`，使用 VPS HTTPS API 與裝置配對。它不是舊的 `dsh-session-sync` Git SSH 插件，請勿同時啟用兩種同步流程。
 
@@ -7,7 +7,7 @@
 使用指定版本安裝，可確保公司與家裡使用同一版本：
 
 ```powershell
-dsh plugin --profile web add "github:ammo0904/dsh-conversation-sync#v0.4.0"
+dsh plugin --profile web add "github:ammo0904/dsh-conversation-sync#v0.5.0"
 ```
 
 日後更新時將標籤換成新版本；安裝後重新啟動 DSH，瀏覽器按 Ctrl+F5。既有本機設定與配對資料保留。套件需要 DSH 0.2.0-rc.2 相容介面及 Node.js 24；VPS HTTPS 同步服務必須另外部署，本儲存庫只包含用戶端插件。
@@ -24,7 +24,7 @@ dsh plugin --profile web add "link:$env:USERPROFILE/DSH-Plugins/dsh-conversation
 ```
 
 4. 重新啟動 DSH，瀏覽器按 Ctrl+F5。
-5. 進入「插件 → dsh-conversation-sync」，確認標題顯示 v0.4.0。
+5. 進入「插件 → dsh-conversation-sync」，確認標題顯示 v0.5.0。
 
 ## 設定會話來源前綴
 
@@ -36,6 +36,24 @@ dsh plugin --profile web add "link:$env:USERPROFILE/DSH-Plugins/dsh-conversation
 按「儲存設定」，再建立新會話並送出第一則訊息。DSH 自動命名後會顯示例如 `公司_討論專案部署`。空白表示停用。
 
 此功能不會批次修改既有標題，不會替下載的對話換成本機前綴。改前綴後，下一個新會話使用新值。前綴只儲存在本機設定，同步傳輸的是已命名的對話標題。
+
+## 對話清單不見或打不開（0.1.0 升級後必做）
+
+0.1.0 下載遠端對話時沒有做 cwd 映射，被下載的記錄檔 header cwd 仍指向來源電腦
+（例如 `C:\Users\USER\...`）。DSH 列舉對話時會驗證 cwd 與實際目錄是否一致，
+一旦不符就拋出 `corrupt session log`，整個對話清單都載入不了——症狀是 GUI 看起來
+「原本的對話都不見了」。
+
+處理方式（本版已內建）：
+
+1. 升級到 0.5.0 並重新啟動 DSH。
+2. 進入「插件 → dsh-conversation-sync」，標題應顯示 v0.5.0。
+3. 按「修復已下載對話」。它只改記錄檔第一格的 header cwd，歷史訊息完全不動，
+   修改前會先備份，寫入後回讀驗證；修復結果會顯示修復幾個對話。
+4. 按一次「立即同步」確認沒有錯誤，再重新整理瀏覽器（Ctrl+F5）。
+
+自動同步（含啟動時的下載）也會先跑一次修復，因此升級後若已開啟自動同步，
+通常不需要手動按。
 
 ## 既有公司裝置
 
@@ -59,5 +77,5 @@ dsh plugin --profile web add "link:$env:USERPROFILE/DSH-Plugins/dsh-conversation
 
 ## 版本與發布
 
-安裝包使用版本檔名 `dsh-conversation-sync-V4-0.4.0.zip`；變更紀錄見 CHANGELOG.md。本插件已發布於 https://github.com/ammo0904/dsh-conversation-sync；目前版本為 `v0.4.0`。不要在 GitHub 放配對憑證、對話紀錄或 VPS 密碼。
+安裝包使用版本檔名 `dsh-conversation-sync-V5-0.5.0.zip`；變更紀錄見 CHANGELOG.md。本插件已發布於 https://github.com/ammo0904/dsh-conversation-sync；目前版本為 `v0.5.0`。不要在 GitHub 放配對憑證、對話紀錄或 VPS 密碼。
 

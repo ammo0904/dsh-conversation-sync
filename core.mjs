@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import * as zlib from 'node:zlib'
-import { decodeZstdContainer, isZstdContainer, remapSessionLogCwd } from './zstd-frames.mjs'
+import { decodeZstdContainer, isZstdContainer, remapSessionLogCwd, zstdFrameRanges } from './zstd-frames.mjs'
 import { projectKey } from './dsh-lease.mjs'
 
 const UUID = /^(?:session-)?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
@@ -47,6 +47,24 @@ function eventTime(data, name) {
   return max
 }
 async function locked(dir) { return (await entries(dir)).some(e => /lock/i.test(e.name)) }
+/** 只解出記錄檔第一格 header（不做整份解壓），用於掃描 header cwd。 */
+function readHeader(data, name) {
+  if (!/\.jsonl(?:\.zstd)?$/i.test(name)) return null
+  let head
+  try {
+    if (isZstdContainer(data)) {
+      const { frames } = zstdFrameRanges(data)
+      if (!frames.length) return null
+      head = zlib.zstdDecompressSync(data.subarray(frames[0].start, frames[0].end))
+    } else head = data
+  } catch { return null }
+  const text = head.toString('utf8')
+  const newline = text.indexOf('\n')
+  try {
+    const value = JSON.parse(newline < 0 ? text : text.slice(0, newline))
+    return value && typeof value === 'object' ? value : null
+  } catch { return null }
+}
 const validPath = name => typeof name === 'string' && name.split('/').every(part => validName(part) && part !== '.' && part !== '..' && !excluded(part))
 async function snapshot(dir, skipped = []) {
   const files = []; let fallback = 0; let logical = 0
@@ -120,6 +138,7 @@ export class SyncClient {
     return { deviceId: this.state.deviceId, registered: true }
   }) }
   async _scan() {
+    await this._load()
     const sessions = new Map(); const skipped = []; const duplicate = new Set()
     for (const project of await entries(this.config.sessionRoot)) {
       if (!project.isDirectory() || excluded(project.name)) continue
@@ -182,6 +201,88 @@ export class SyncClient {
     this.projectCwds.set(key, found)
     return found
   }
+  /**
+   * 修復 0.1.0 遺留的跨機 cwd 錯位記錄檔。
+   *
+   * 0.1.0 下載時未把 header cwd 映射成本機路徑，DSH 的 session 列舉
+   * （session-persistence-jsonl 的 list()）會直接拋出 corrupt session log，
+   * 導致整個對話清單載入失敗，GUI 看起來「對話都不見了」。
+   *
+   * 本方法掃描每個記錄檔的第一格 header：若 `projectKey(header.cwd)` 與檔案所在的
+   * 專案目錄不符，就把 header cwd 改寫成該目錄所代表的本機路徑。事件格
+   * （歷史訊息、工具輸出）位元組完全不動；修改前先完整備份，寫入後回讀驗證。
+   * @param {object} outcome 統計結果物件（repaired/repairedFiles/backups/unresolved/errors）。
+   * @param {boolean} dryRun 只檢查、不寫入。
+   */
+  async _repairPass(outcome, dryRun = false) {
+    outcome.repaired ??= 0; outcome.repairedFiles ??= 0; outcome.backups ??= []; outcome.unresolved ??= []; outcome.errors ??= []
+    for (const project of await entries(this.config.sessionRoot)) {
+      if (!project.isDirectory() || excluded(project.name)) continue
+      const key = project.name
+      const misplaced = []
+      for (const session of await entries(path.join(this.config.sessionRoot, key))) {
+        const match = UUID.exec(session.name)
+        if (!session.isDirectory() || !match) continue
+        const dir = path.join(this.config.sessionRoot, key, session.name)
+        const logs = []
+        for (const file of await entries(dir)) {
+          if (!file.isFile() || !/\.jsonl(?:\.zstd)?$/i.test(file.name)) continue
+          let data
+          try { data = await fs.readFile(path.join(dir, file.name)) } catch { continue }
+          const header = readHeader(data, file.name)
+          if (!header || typeof header.cwd !== 'string' || !header.cwd) continue
+          if (projectKey(header.cwd) === key) continue
+          logs.push({ name: file.name, data, from: header.cwd })
+        }
+        if (logs.length) misplaced.push({ dir, id: match[1].toLowerCase(), sessionId: session.name, logs })
+      }
+      if (!misplaced.length) continue
+      const targetCwd = await this._projectCwd(key)
+      for (const item of misplaced) {
+        if (!targetCwd) { outcome.unresolved.push({ conversationId: item.id, projectKey: key, reason: '無法從此專案目錄的既有對話推得本機路徑' }); continue }
+        if (dryRun) { outcome.repaired++; outcome.repairedFiles += item.logs.length; continue }
+        try {
+          const apply = async () => {
+            const writes = []
+            for (const log of item.logs) {
+              const mapped = remapSessionLogCwd(log.data, targetCwd)
+              if (mapped.changed) writes.push({ name: log.name, data: mapped.buffer })
+            }
+            if (!writes.length) { outcome.unresolved.push({ conversationId: item.id, projectKey: key, reason: '記錄檔無法安全改寫' }); return }
+            const backup = await this._backup(item.dir)
+            for (const write of writes) await atomic(path.join(item.dir, write.name), write.data)
+            for (const write of writes) {
+              const header = readHeader(await fs.readFile(path.join(item.dir, write.name)), write.name)
+              if (!header || typeof header.cwd !== 'string' || projectKey(header.cwd) !== key) {
+                for (const log of item.logs) await atomic(path.join(item.dir, log.name), log.data)
+                throw new Error(`修復後回讀驗證失敗，已還原：${write.name}`)
+              }
+            }
+            outcome.backups.push(backup); outcome.repaired++; outcome.repairedFiles += writes.length
+            const known = this.state.sessions[item.id]
+            if (known) {
+              const restored = await snapshot(item.dir)
+              this.state.sessions[item.id] = { version: known.version, hash: restored.hash, logicalUpdatedAt: restored.logicalUpdatedAt, projectKey: key, sessionId: item.sessionId }
+            }
+          }
+          if (typeof this.config.withSessionLease === 'function') await this.config.withSessionLease(item.dir, item.sessionId, apply)
+          else await apply()
+        } catch (error) {
+          if (error?.code === 'EBUSY') outcome.unresolved.push({ conversationId: item.id, projectKey: key, reason: error.message })
+          else outcome.errors.push({ conversationId: item.id, message: error.message })
+        }
+      }
+    }
+    return outcome
+  }
+  /** 修復入口：修正跨機 cwd 錯位（不改事件內容，修改前備份）。dryRun 只檢查。 */
+  repair({ dryRun = false } = {}) { return this._serialized(async () => {
+    await this._load()
+    const result = { repaired: 0, repairedFiles: 0, backups: [], unresolved: [], errors: [] }
+    await this._repairPass(result, dryRun)
+    if (!dryRun && result.repaired > 0) await this._save()
+    return result
+  }) }
   async _download(id, record, local, result, leased = false) {
     if (!local && !this.config.restoreProjectKey) { result.errors.push({ conversationId: id, message: 'restoreProjectKey is required for a new remote session' }); return }
     const response = await this._request(`/v1/sync/versions/${id}/${record.version}`); const data = response.value
@@ -266,9 +367,11 @@ export class SyncClient {
   }
   sync({ upload = true, download = true } = {}) { return this._serialized(async () => {
     await this._load()
-    const result = { uploaded: 0, downloaded: 0, conflicts: 0, unchanged: 0, deferred: 0, remapped: 0, backup: null, backups: [], errors: [], skipped: [] }
+    const result = { uploaded: 0, downloaded: 0, conflicts: 0, unchanged: 0, deferred: 0, remapped: 0, repaired: 0, repairedFiles: 0, unresolved: [], backup: null, backups: [], errors: [], skipped: [] }
     if (!upload && !download) return result
     try {
+      // 同步前先修復舊版留下的跨機 cwd 錯位；不修就無法列舉對話（DSH 會拋 corrupt session log）。
+      await this._repairPass(result)
       const manifest = (await this._request('/v1/sync/manifest')).value
       const scan = await this._scan(); result.skipped = scan.skipped
       const remote = new Map(manifest.items.map(r => [r.conversationId, r]))

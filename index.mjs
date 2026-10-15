@@ -37,13 +37,14 @@ export function apply(ctx) {
   let lastPoll=Date.now()
   ctx.effect(()=>ctx.connection.fetch.register({path:'/api/conversation-sync',methods:['GET','POST'],requestBody:'buffered',fetch:async request=>{
     try{
-      if(request.method==='GET'){const {config}=current();return Response.json({ok:true,version:'0.4.0',value:config,sync:await getClient().status(),projects:await projects(),backups:await getClient().backups()})}
+      if(request.method==='GET'){const {config}=current();return Response.json({ok:true,version:'0.5.0',value:config,sync:await getClient().status(),projects:await projects(),backups:await getClient().backups()})}
       const body=await request.json()
       return await serialize(async()=>{
         if(body.action==='save'){const value=validateSettings(body.value);const {item}=current();await ctx.configEditor.edit(item.entry,existing=>({...existing,...value}));if((current().config.titlePrefix||'')!==value.titlePrefix) throw new Error('前綴尚未套用，請重新啟動 DSH 後再儲存');return Response.json({ok:true,message:'設定已儲存。'})}
         const c=getClient()
         if(body.action==='register'){await c.register(String(body.enrollmentSecret||''));return Response.json({ok:true,message:'裝置配對完成。'})}
-        if(body.action==='sync'){const result=await c.sync({upload:true,download:true});return Response.json({ok:true,result,message:`上傳 ${result.uploaded}、下載 ${result.downloaded}、衝突 ${result.conflicts}、暫緩 ${result.deferred}。`})}
+        if(body.action==='sync'){const result=await c.sync({upload:true,download:true});return Response.json({ok:true,result,message:`上傳 ${result.uploaded}、下載 ${result.downloaded}、衝突 ${result.conflicts}、暫緩 ${result.deferred}、修復 ${result.repaired}。`})}
+        if(body.action==='repair'){const result=await c.repair({dryRun:Boolean(body.dryRun)});const extra=result.unresolved.length?`、待處理 ${result.unresolved.length}`:'';return Response.json({ok:true,result,message:`${body.dryRun?'檢查':'修復'} ${result.repaired} 個對話（${result.repairedFiles} 個記錄檔）${extra}${result.errors.length?`、錯誤 ${result.errors.length}`:''}。`})}
         if(body.action==='test'){const response=await fetch(`${current().config.apiBaseUrl}/health`,{signal:AbortSignal.timeout(10000)});if(!response.ok)throw new Error('VPS 健康檢查失敗');const remote=await response.json();if(remote.service!=='dsh-conversation-sync-server')throw new Error('此位址不是對話同步服務');return Response.json({ok:true,message:'VPS 連線正常。'})}
         throw new Error('不支援的操作')
       })
