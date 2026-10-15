@@ -1,4 +1,4 @@
-# DSH 對話雲端同步 V5（0.5.0）
+# DSH 對話雲端同步 V5.1（0.5.1）
 
 此套件為 `dsh-conversation-sync`，使用 VPS HTTPS API 與裝置配對。它不是舊的 `dsh-session-sync` Git SSH 插件，請勿同時啟用兩種同步流程。
 
@@ -7,7 +7,7 @@
 使用指定版本安裝，可確保公司與家裡使用同一版本：
 
 ```powershell
-dsh plugin --profile web add "github:ammo0904/dsh-conversation-sync#v0.5.0"
+dsh plugin --profile web add "github:ammo0904/dsh-conversation-sync#v0.5.1"
 ```
 
 日後更新時將標籤換成新版本；安裝後重新啟動 DSH，瀏覽器按 Ctrl+F5。既有本機設定與配對資料保留。套件需要 DSH 0.2.0-rc.2 相容介面及 Node.js 24；VPS HTTPS 同步服務必須另外部署，本儲存庫只包含用戶端插件。
@@ -24,7 +24,7 @@ dsh plugin --profile web add "link:$env:USERPROFILE/DSH-Plugins/dsh-conversation
 ```
 
 4. 重新啟動 DSH，瀏覽器按 Ctrl+F5。
-5. 進入「插件 → dsh-conversation-sync」，確認標題顯示 v0.5.0。
+5. 進入「插件 → dsh-conversation-sync」，確認標題顯示 v0.5.1。
 
 ## 設定會話來源前綴
 
@@ -55,6 +55,15 @@ dsh plugin --profile web add "link:$env:USERPROFILE/DSH-Plugins/dsh-conversation
 自動同步（含啟動時的下載）也會先跑一次修復，因此升級後若已開啟自動同步，
 通常不需要手動按。
 
+## 移除不想再同步的對話（忽略清單）
+
+舊 DSH 格式（`session.jsonl.zstd` v0）對目前的 DSH 來說無法遷移、開啟會失敗。把這些
+會話 ID 填進「不要同步並從本機移除的會話 ID」欄位後儲存，然後按「移除已忽略對話」：
+
+- 清單中的對話不會上傳、也不會被下載回來。
+- 同步（含自動同步）開始前會自動備份並移除它們的本機檔案。
+- 備份仍在 `conversation-sync-backups`，需要時可還原。
+
 ## 既有公司裝置
 
 請保留原本 VPS HTTPS 位址、裝置名稱、配對資料與還原專案。已配對的裝置不需重新配對，亦不需 SSH 金鑰或 root 密碼。從 0.1.0 升級時請先升級到本版後再下載；本版包含 0.2.0 的跨電腦 cwd 映射修正。
@@ -77,5 +86,5 @@ dsh plugin --profile web add "link:$env:USERPROFILE/DSH-Plugins/dsh-conversation
 
 ## 版本與發布
 
-安裝包使用版本檔名 `dsh-conversation-sync-V5-0.5.0.zip`；變更紀錄見 CHANGELOG.md。本插件已發布於 https://github.com/ammo0904/dsh-conversation-sync；目前版本為 `v0.5.0`。不要在 GitHub 放配對憑證、對話紀錄或 VPS 密碼。
+安裝包使用版本檔名 `dsh-conversation-sync-V5.1-0.5.1.zip`；變更紀錄見 CHANGELOG.md。本插件已發布於 https://github.com/ammo0904/dsh-conversation-sync；目前版本為 `v0.5.1`。不要在 GitHub 放配對憑證、對話紀錄或 VPS 密碼。
 

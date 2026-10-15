@@ -66,6 +66,14 @@ function readHeader(data, name) {
   } catch { return null }
 }
 const validPath = name => typeof name === 'string' && name.split('/').every(part => validName(part) && part !== '.' && part !== '..' && !excluded(part))
+/**
+ * 解析忽略清單：逗號、分號或空白分隔，接受 `session-` 前綴，正規化為小寫 UUID 集合。
+ * @param {string} value 設定值。
+ * @returns {Set<string>} conversationId 集合。
+ */
+export function ignoredIds(value) {
+  return new Set(String(value ?? '').split(/[\s,;]+/).filter(Boolean).map(id => id.replace(/^session-/i, '').toLowerCase()))
+}
 async function snapshot(dir, skipped = []) {
   const files = []; let fallback = 0; let logical = 0
   async function visit(current, prefix = '') {
@@ -109,6 +117,7 @@ export class SyncClient {
     this.config = { ...config, home: path.resolve(config.home), sessionRoot: path.resolve(config.sessionRoot ?? path.join(config.home, 'sessions')), apiBaseUrl: (config.apiBaseUrl ?? '').replace(/\/$/, '') }
     this.stateFile = path.join(this.config.home, 'conversation-sync-state.json')
     this.backupRoot = path.join(this.config.home, 'conversation-sync-backups')
+    this.ignored = ignoredIds(config.ignoredSessionIds)
     this.queue = Promise.resolve()
   }
   _serialized(work) { const result = this.queue.then(work); this.queue = result.catch(() => {}); return result }
@@ -223,6 +232,7 @@ export class SyncClient {
       for (const session of await entries(path.join(this.config.sessionRoot, key))) {
         const match = UUID.exec(session.name)
         if (!session.isDirectory() || !match) continue
+        if (this.ignored.has(match[1].toLowerCase())) continue
         const dir = path.join(this.config.sessionRoot, key, session.name)
         const logs = []
         for (const file of await entries(dir)) {
@@ -275,6 +285,40 @@ export class SyncClient {
     }
     return outcome
   }
+  /**
+   * 移除忽略清單中對話的本機檔案：先備份再刪除，並清掉同步狀態，之後不再同步、
+   * 也不會被下載回來。忽略清單為空時不做任何事。
+   * @param {object} outcome 統計結果物件（removed/backups/errors）。
+   */
+  async _removeIgnoredPass(outcome) {
+    outcome.removed ??= 0; outcome.removedIds ??= []; outcome.backups ??= []; outcome.errors ??= []
+    if (!this.ignored.size) return outcome
+    for (const [id, item] of (await this._scan()).sessions) {
+      if (!this.ignored.has(id)) continue
+      try {
+        const apply = async () => {
+          outcome.backups.push(await this._backup(item.dir))
+          await fs.rm(item.dir, { recursive: true, force: true })
+          delete this.state.sessions[id]
+          outcome.removed++; outcome.removedIds.push(id)
+        }
+        if (typeof this.config.withSessionLease === 'function') await this.config.withSessionLease(item.dir, item.sessionId, apply)
+        else await apply()
+      } catch (error) {
+        if (error?.code === 'EBUSY') outcome.errors.push({ conversationId: id, message: '對話正在使用中，暫緩移除' })
+        else outcome.errors.push({ conversationId: id, message: error.message })
+      }
+    }
+    return outcome
+  }
+  /** 忽略清單的移除入口（GUI 按鈕）：先備份、再移除本機檔案。 */
+  removeIgnored() { return this._serialized(async () => {
+    await this._load()
+    const result = { removed: 0, removedIds: [], backups: [], errors: [] }
+    await this._removeIgnoredPass(result)
+    if (result.removed > 0) await this._save()
+    return result
+  }) }
   /** 修復入口：修正跨機 cwd 錯位（不改事件內容，修改前備份）。dryRun 只檢查。 */
   repair({ dryRun = false } = {}) { return this._serialized(async () => {
     await this._load()
@@ -367,16 +411,19 @@ export class SyncClient {
   }
   sync({ upload = true, download = true } = {}) { return this._serialized(async () => {
     await this._load()
-    const result = { uploaded: 0, downloaded: 0, conflicts: 0, unchanged: 0, deferred: 0, remapped: 0, repaired: 0, repairedFiles: 0, unresolved: [], backup: null, backups: [], errors: [], skipped: [] }
+    const result = { uploaded: 0, downloaded: 0, conflicts: 0, unchanged: 0, deferred: 0, remapped: 0, repaired: 0, repairedFiles: 0, removed: 0, ignored: 0, unresolved: [], backup: null, backups: [], errors: [], skipped: [] }
     if (!upload && !download) return result
     try {
-      // 同步前先修復舊版留下的跨機 cwd 錯位；不修就無法列舉對話（DSH 會拋 corrupt session log）。
+      // 先移除忽略清單中的本機對話（舊 v0 等無法讀取的紀錄），再修復跨機 cwd 錯位；
+      // 錯位不修就無法列舉對話（DSH 會拋 corrupt session log）。
+      await this._removeIgnoredPass(result)
       await this._repairPass(result)
       const manifest = (await this._request('/v1/sync/manifest')).value
       const scan = await this._scan(); result.skipped = scan.skipped
       const remote = new Map(manifest.items.map(r => [r.conversationId, r]))
       const ids = new Set([...scan.sessions.keys(), ...remote.keys()])
       for (const id of ids) {
+        if (this.ignored.has(id)) { result.ignored++; continue }
         if (scan.duplicate.has(id)) { result.deferred++; continue }
         const local = scan.sessions.get(id); let head = remote.get(id); const known = this.state.sessions[id]
         try {
